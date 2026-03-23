@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Актуализация данных</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-blue: #6191c1;
+            --header-blue: #4a81b3;
+            --btn-green: #52a14b;
+            --btn-blue: #4a81b3;
+            --btn-light: #e9ecef;
+            --text-dark: #222;
+        }
+
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            background-color: var(--bg-blue);
+            margin: 0; padding: 15px;
+            display: flex; justify-content: center;
+        }
+
+        .container {
+            background: white; border-radius: 15px;
+            width: 100%; max-width: 400px;
+            overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        }
+
+        .header {
+            background: var(--header-blue); color: white;
+            padding: 15px; text-align: center; font-weight: bold;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .section { padding: 15px; border-bottom: 6px solid #f0f2f5; }
+        .section-title { font-weight: bold; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn {
+            flex: 1; padding: 12px; border: none; border-radius: 10px;
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-yes { background: var(--btn-green); color: white; }
+        .btn-no { background: var(--btn-blue); color: white; }
+        .btn-opt { background: var(--btn-light); color: #495057; border: 1px solid #ced4da; }
+        
+        /* Состояние активной кнопки */
+        .btn.active { outline: 3px solid rgba(82, 161, 75, 0.5); transform: scale(0.98); }
+        .btn-opt.selected { background: #d1e7dd; border-color: #a3cfbb; }
+
+        select {
+            width: 100%; padding: 12px; margin-top: 10px;
+            border: 1px solid #ced4da; border-radius: 10px; background: white;
+        }
+
+        #location-status, #photo-preview {
+            font-size: 12px; color: #666; margin-top: 8px; display: none;
+        }
+
+        .footer { padding: 15px; }
+        .btn-save {
+            width: 100%; background: var(--btn-green); color: white;
+            padding: 16px; border: none; border-radius: 12px;
+            font-size: 18px; font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div style="flex:1"></div>
+        <span>Актуализация данных</span>
+        <div style="flex:1; text-align:right; cursor:pointer" onclick="window.close()">✕</div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">📍 Геолокация точная?</div>
+        <div class="btn-group">
+            <button class="btn btn-yes" onclick="selectBtn(this)">Да</button>
+            <button class="btn btn-no" onclick="getLocation(this)">Нет, отправить свою</button>
+        </div>
+        <div id="location-status"></div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">🏠 Фото дома точное?</div>
+        <div class="btn-group">
+            <button class="btn btn-yes" onclick="selectBtn(this)">Да</button>
+            <button class="btn btn-no" onclick="document.getElementById('photoInput').click()">Нет, загрузить фото</button>
+        </div>
+        <input type="file" id="photoInput" style="display:none" accept="image/*" onchange="handlePhoto(this)">
+        <div id="photo-preview">Фото выбрано ✅</div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">🗺 Зона доставки верная?</div>
+        <div class="btn-group">
+            <button class="btn btn-yes" onclick="selectBtn(this)">Да</button>
+            <button class="btn btn-opt" onclick="selectBtn(this)">Нет, выбрать зону</button>
+        </div>
+        <select id="zoneSelect">
+            <option>Запад</option>
+            <option>Центр</option>
+            <option>Юг</option>
+            <option>Север</option>
+        </select>
+    </div>
+
+    <div class="section">
+        <div class="section-title">🔑 Как попасть в дом?</div>
+        <div class="btn-group">
+            <button class="btn btn-opt" onclick="toggleOpt(this)">Домофон</button>
+            <button class="btn btn-opt" onclick="toggleOpt(this)">Код на двери</button>
+            <button class="btn btn-opt" onclick="toggleOpt(this)">Позвонить</button>
+            <button class="btn btn-opt" onclick="toggleOpt(this)">Я на месте</button>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="btn-save" onclick="sendData()">Сохранить</button>
+    </div>
+</div>
+
+<script>
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+
+    // Функция выбора в группах Да/Нет
+    function selectBtn(btn) {
+        const parent = btn.parentElement;
+        parent.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+
+    // Множественный выбор для способов доступа
+    function toggleOpt(btn) {
+        btn.classList.toggle('selected');
+    }
+
+    // ГЕОЛОКАЦИЯ
+    function getLocation(btn) {
+        selectBtn(btn);
+        const status = document.getElementById('location-status');
+        status.style.display = 'block';
+        status.innerText = "Определяю координаты...";
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    status.innerText = `📍 Координаты получены: ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`;
+                },
+                () => { status.innerText = "❌ Ошибка доступа к GPS"; }
+            );
+        } else {
+            status.innerText = "GPS не поддерживается";
+        }
+    }
+
+    // ФОТО
+    function handlePhoto(input) {
+        if (input.files && input.files[0]) {
+            document.getElementById('photo-preview').style.display = 'block';
+        }
+    }
+
+    // ОТПРАВКА ДАННЫХ В БОТ
+    function sendData() {
+        const data = {
+            zone: document.getElementById('zoneSelect').value,
+            status: "updated"
+        };
+        tg.sendData(JSON.stringify(data));
+    }
+</script>
+
+</body>
+</html>
